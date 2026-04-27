@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freelancer Invoice Review</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<style>
+    :root {
+        --bg: #f7f4ed;
+        --surface: #ffffff;
+        --ink: #1a1a1a;
+        --ink-soft: #555;
+        --muted: #8a8577;
+        --line: #e4dfd3;
+        --accent: #0e5e3e;
+        --accent-soft: #d6e8dc;
+        --warn: #a8501c;
+        --warn-soft: #f4e4d4;
+        --warn-strong: #8b3e11;
+        --info: #2d5f8a;
+        --info-soft: #dbe7f2;
+        --shadow: 0 1px 2px rgba(26,26,26,.04), 0 8px 24px rgba(26,26,26,.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+    }
+    .container {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 48px 32px 80px;
+    }
+    header {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 24px;
+        margin-bottom: 32px;
+    }
+    .eyebrow {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 10px;
+    }
+    h1 {
+        font-family: 'Fraunces', serif;
+        font-weight: 500;
+        font-size: 38px;
+        line-height: 1.1;
+        margin: 0 0 8px;
+        letter-spacing: -0.01em;
+    }
+    .sub { color: var(--ink-soft); font-size: 14px; max-width: 680px; }
+
+    .step-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .step-num {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 1px solid var(--muted);
+        border-radius: 50%;
+        text-align: center;
+        line-height: 19px;
+        font-size: 11px;
+    }
+
+    .upload-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    @media (max-width: 720px) { .upload-row { grid-template-columns: 1fr; } }
+
+    .drop {
+        background: var(--surface);
+        border: 1.5px dashed var(--line);
+        border-radius: 10px;
+        padding: 22px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .drop:hover { border-color: var(--accent); background: #fcfbf7; }
+    .drop.drag { border-color: var(--accent); background: var(--accent-soft); }
+    .drop.loaded {
+        text-align: left;
+        border-style: solid;
+        border-color: var(--accent);
+        background: var(--surface);
+    }
+    .drop h3 {
+        font-family: 'Fraunces', serif;
+        font-weight: 500;
+        font-size: 16px;
+        margin: 0 0 2px;
+    }
+    .drop p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+    .drop.required h3::after {
+        content: ' *';
+        color: var(--warn);
+    }
+    .drop .file-info {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .clear-btn {
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--ink-soft);
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .clear-btn:hover { background: var(--bg); }
+
+    /* Filters */
+    .filters {
+        display: none;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 22px 24px;
+        margin-bottom: 24px;
+    }
+    .filters.visible { display: block; }
+    .filter-row {
+        display: grid;
+        grid-template-columns: 1fr 220px;
+        gap: 20px;
+        align-items: flex-end;
+    }
+    @media (max-width: 720px) { .filter-row { grid-template-columns: 1fr; } }
+    .filter-group label {
+        display: block;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 8px;
+    }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--bg);
+        color: var(--ink-soft);
+        cursor: pointer;
+        transition: all 0.15s;
+        user-select: none;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+    .chip.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+    .chip .count { opacity: 0.7; margin-left: 4px; font-size: 11px; }
+    select {
+        width: 100%;
+        font-family: inherit;
+        font-size: 14px;
+        color: var(--ink);
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 12px;
+    }
+    select:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+
+    /* Bucket stats */
+    .buckets {
+        display: none;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .buckets.visible { display: grid; }
+    @media (max-width: 600px) { .buckets { grid-template-columns: 1fr; } }
+    .bucket {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+        border-left-width: 4px;
+    }
+    .bucket.clean { border-left-color: var(--accent); }
+    .bucket.attention { border-left-color: var(--warn); }
+    .bucket.unverified { border-left-color: var(--info); }
+    .bucket-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+    .bucket-value {
+        font-family: 'Fraunces', serif;
+        font-size: 28px;
+        font-weight: 500;
+        line-height: 1.1;
+    }
+    .bucket-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+    }
+
+    /* Freelancer group */
+    .group {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+    .group-header {
+        padding: 14px 20px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .group-header h3 {
+        margin: 0;
+        font-family: 'Fraunces', serif;
+        font-weight: 500;
+        font-size: 17px;
+    }
+    .group-header .meta {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    /* Invoice card */
+    .invoice {
+        border-bottom: 1px solid var(--line);
+        padding: 0;
+    }
+    .invoice:last-child { border-bottom: none; }
+    .invoice-top {
+        display: grid;
+        grid-template-columns: 20px 1fr auto;
+        gap: 12px;
+        padding: 14px 20px;
+        align-items: flex-start;
+    }
+    .invoice-top input[type="checkbox"] {
+        margin-top: 3px;
+        cursor: pointer;
+        accent-color: var(--accent);
+    }
+    .invoice.checked .invoice-main { opacity: 0.5; text-decoration: line-through; }
+    .invoice-main {
+        min-width: 0;
+    }
+    .invoice-title {
+        font-size: 14px;
+        color: var(--ink);
+        font-weight: 500;
+        word-break: break-word;
+    }
+    .invoice-meta {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+        letter-spacing: 0.02em;
+    }
+    .invoice-amt {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px;
+        color: var(--ink);
+        white-space: nowrap;
+        text-align: right;
+    }
+    .invoice-rate {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        margin-top: 3px;
+        white-space: nowrap;
+        text-align: right;
+        letter-spacing: 0.02em;
+    }
+    .invoice-rate.match { color: var(--accent); }
+    .invoice-rate.mismatch { color: var(--warn-strong); }
+    .invoice-rate.no-baseline { color: var(--muted); }
+    .invoice-rate.special { color: var(--muted); font-style: italic; }
+    .invoice-rate .icon {
+        margin-right: 3px;
+    }
+
+    .flags {
+        padding: 0 20px 10px 52px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+    .flag {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+    .flag.attention {
+        background: var(--warn-soft);
+        color: var(--warn-strong);
+        border-left: 3px solid var(--warn);
+    }
+    .flag.info {
+        background: var(--info-soft);
+        color: var(--info);
+        border-left: 3px solid var(--info);
+    }
+    .flag.ok {
+        background: var(--accent-soft);
+        color: var(--accent);
+        border-left: 3px solid var(--accent);
+    }
+    .flag-icon {
+        font-family: 'IBM Plex Mono', monospace;
+        flex-shrink: 0;
+    }
+    .flag-text { flex: 1; }
+    .flag-text b { font-weight: 600; }
+
+    /* Detail expansion */
+    .detail-toggle {
+        background: transparent;
+        border: none;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 4px 52px 10px;
+        letter-spacing: 0.04em;
+    }
+    .detail-toggle:hover { color: var(--accent); }
+    .detail {
+        display: none;
+        padding: 8px 20px 16px 52px;
+        background: var(--bg);
+        border-top: 1px dashed var(--line);
+    }
+    .detail.open { display: block; }
+    .ep-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+    .ep-table th {
+        background: var(--surface);
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 500;
+    }
+    .ep-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        vertical-align: top;
+    }
+    .ep-table tr:last-child td { border-bottom: none; }
+    .ep-table .num {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px;
+    }
+    .ep-ok { color: var(--accent); font-weight: 500; }
+    .ep-warn { color: var(--warn-strong); font-weight: 500; }
+    .ep-miss { color: var(--muted); font-style: italic; }
+
+    .special-tag {
+        display: inline-block;
+        margin-left: 6px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 10px;
+        background: var(--warn-soft);
+        color: var(--warn);
+        padding: 1px 6px;
+        border-radius: 3px;
+        letter-spacing: 0.05em;
+        vertical-align: 1px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 24px;
+        color: var(--muted);
+    }
+
+    footer {
+        margin-top: 44px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+    }
+
+    .toast {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        padding: 14px 18px;
+        background: var(--ink);
+        color: var(--surface);
+        border-radius: 8px;
+        font-size: 14px;
+        box-shadow: var(--shadow);
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: all 0.2s ease;
+        pointer-events: none;
+        z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: var(--accent); }
+    .toast.error { background: var(--warn); }
+</style>
+</head>
+
+<body>
+<div class="container">
+    <header>
+        <div class="eyebrow">Worksuite · Invoice Pre-Approval Review</div>
+        <h1>Invoice review</h1>
+        <p class="sub">Cross-checks pending invoices for chronology issues (gaps, overlaps, out-of-order episodes) and against your Airtable episode tracker (due date matches work month). Flags cases that need your attention.</p>
+    </header>
+
+    <!-- Upload -->
+    <div class="step-label"><span class="step-num">1</span> Upload data</div>
+    <div class="upload-row">
+        <div class="drop required" id="csvDrop">
+            <div id="csvEmpty">
+                <h3>Worksuite payments CSV</h3>
+                <p>drag & drop or click to browse</p>
+            </div>
+            <div id="csvLoaded" style="display:none;">
+                <div class="file-info">
+                    <div>
+                        <h3 id="csvName">—</h3>
+                        <p id="csvStatus">—</p>
+                    </div>
+                    <button class="clear-btn" id="csvClear">Replace</button>
+                </div>
+            </div>
+        </div>
+        <div class="drop" id="atDrop">
+            <div id="atEmpty">
+                <h3>Airtable episode tracker CSV</h3>
+                <p>optional — enables due-date cross-check</p>
+            </div>
+            <div id="atLoaded" style="display:none;">
+                <div class="file-info">
+                    <div>
+                        <h3 id="atName">—</h3>
+                        <p id="atStatus">—</p>
+                    </div>
+                    <button class="clear-btn" id="atClear">Replace</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <input type="file" id="csvInput" accept=".csv,text/csv" style="display:none;">
+    <input type="file" id="atInput" accept=".csv,text/csv" style="display:none;">
+
+    <!-- Filters -->
+    <div class="filters" id="filters">
+        <div class="step-label" style="margin-bottom:14px;">
+            <span class="step-num">2</span> Filter
+        </div>
+        <div class="filter-row">
+            <div class="filter-group">
+                <label>Your team (by approver)</label>
+                <div class="chip-group" id="approverChips"></div>
+            </div>
+            <div class="filter-group">
+                <label>Review status</label>
+                <select id="statusSelect">
+                    <option value="new">New — pending first review (default)</option>
+                    <option value="new_approved">New + already approved</option>
+                    <option value="all_pre_paid">Everything except paid & rejected</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Buckets -->
+    <div class="buckets" id="buckets">
+        <div class="bucket clean">
+            <div class="bucket-label">Clean</div>
+            <div class="bucket-value" id="bClean">—</div>
+            <div class="bucket-sub">all checks pass</div>
+        </div>
+        <div class="bucket attention">
+            <div class="bucket-label">Needs attention</div>
+            <div class="bucket-value" id="bAttention">—</div>
+            <div class="bucket-sub">chronology or Airtable mismatch</div>
+        </div>
+        <div class="bucket unverified">
+            <div class="bucket-label">Unverified</div>
+            <div class="bucket-value" id="bUnverified">—</div>
+            <div class="bucket-sub" id="bUnverifiedSub">no Airtable data loaded</div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results"></div>
+
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <p>No pending invoices match the current filters.</p>
+    </div>
+
+    <footer>
+        Runs entirely in your browser — nothing is uploaded. "Your team" is derived from historical approvals: a freelancer is on Dennis Choi's team if Dennis has ever approved one of their past invoices. This works because "new" invoices haven't been approved yet and have no approver assigned. The chronology check walks through every invoice for each freelancer × series combination (across the full history in the CSV) and flags gaps, overlaps, and out-of-order submissions. The rate check compares each pending invoice's per-episode rate against the most-frequent rate across that freelancer's prior PAID invoices for the same series; Sam Kim and Hyerim Ko are excluded because they bill by hour and character count. The Airtable check matches each invoice episode by translator email + series name + episode number, then compares the relevant due date (Translation for "Freelance Translator" tag, Lettering for "Freelance Translator/GD" and "Mantra" tags) against the invoice's work month.
+    </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // =========================================================================
+    // State
+    // =========================================================================
+    const state = {
+        pays: [],
+        at: [],
+        approverCounts: {},
+        activeApprovers: new Set(),
+        activeStatus: 'new',
+        expanded: new Set(),
+        checked: new Set(),
+    };
+    const DEFAULT_APPROVERS = ['Dennis Choi', 'Min Ju Huh'];
+    const SPECIAL_FREELANCERS = {
+        'Sam Kim': 'hourly',
+        'Hyerim Ko': 'by char',
+        'Janelle George': 'proofreader',
+    };
+    const MONTHS = {january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+
+    const $ = id => document.getElementById(id);
+
+    function toast(msg, type = '') {
+        const t = $('toast');
+        t.textContent = msg;
+        t.className = 'toast show ' + type;
+        setTimeout(() => { t.className = 'toast ' + type; }, 2500);
+    }
+
+    // =========================================================================
+    // Episode parsing (shared with expense summary tool)
+    // =========================================================================
+    function extractEpisodeNumbers(title) {
+        if (!title) return [];
+        const keyword = title.match(/\b(?:Episodes?|Eps?)\.?/i);
+        if (!keyword) {
+            // Fallback for no-keyword titles (e.g., Jooyea's format)
+            if (/\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*$/.test(title)) return [];
+            const m = title.match(/[\s\-–](\d+)\s*[-–]\s*(\d+)\s*$/);
+            if (m) {
+                const start = parseInt(m[1], 10), end = parseInt(m[2], 10);
+                if (end >= 1900 && end <= 2100) return [];
+                if (end >= start) {
+                    const out = [];
+                    for (let i = start; i <= end; i++) out.push(i);
+                    return out;
+                }
+            }
+            return [];
+        }
+        let tail = title.slice(keyword.index + keyword[0].length);
+        tail = tail.replace(/^\s*S\d+\s+/i, ' ');
+        const results = [];
+        let pos = 0;
+        while (pos < tail.length) {
+            const rest = tail.slice(pos);
+            const sep = rest.match(/^(?:[\s,+&]+|\band\b)/i);
+            if (sep) { pos += sep[0].length; continue; }
+            // Range to "EP"/"Epilogue" — e.g. "Eps 28-EP" means Ep 28 + Epilogue
+            // (two episodes). We use a synthetic episode number for the
+            // epilogue so it appears in the parsed list but doesn't get
+            // confused with a real episode number.
+            const rngToEp = rest.match(/^(\d+(?:\.\d+)?)\s*[-–]\s*(?:EP|Epilogue)\b/i);
+            if (rngToEp) {
+                results.push(parseFloat(rngToEp[1]));
+                results.push(parseFloat(rngToEp[1]) + 0.99); // synthetic epilogue marker
+                pos += rngToEp[0].length;
+                continue;
+            }
+            const range = rest.match(/^(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+            if (range) {
+                const start = parseFloat(range[1]), end = parseFloat(range[2]);
+                if (start !== Math.floor(start)) results.push(start);
+                const firstInt = start === Math.floor(start) ? Math.floor(start) : Math.floor(start) + 1;
+                for (let i = firstInt; i <= Math.floor(end); i++) results.push(i);
+                pos += range[0].length;
+                continue;
+            }
+            const single = rest.match(/^\d+(?:\.\d+)?/);
+            if (single) { results.push(parseFloat(single[0])); pos += single[0].length; continue; }
+            // Standalone "EP" or "Epilogue" as its own unit (e.g. "Ep 50, EP")
+            const epWord = rest.match(/^(?:EP|Epilogue)\b/i);
+            if (epWord) {
+                // Synthetic marker: 0.5 if no numeric eps yet, else last+0.99
+                const marker = results.length ? results[results.length - 1] + 0.99 : 0.5;
+                results.push(marker);
+                pos += epWord[0].length;
+                continue;
+            }
+            break;
+        }
+        return results;
+    }
+
+    function extractWorkMonth(row) {
+        const title = row['Invoice'] || '';
+        let m = title.match(/(?:^|\s|-\s*)(\d{2})(\d{4})\b/);
+        if (m) {
+            const mm = parseInt(m[1]), yy = parseInt(m[2]);
+            if (mm >= 1 && mm <= 12 && yy >= 2020 && yy <= 2030) return { year: yy, month: mm };
+        }
+        m = title.match(/(?:^|\s|-)(\d{1,2})[-\s](\d{4})\b/);
+        if (m) {
+            const mm = parseInt(m[1]), yy = parseInt(m[2]);
+            if (mm >= 1 && mm <= 12 && yy >= 2020 && yy <= 2030) return { year: yy, month: mm };
+        }
+        m = title.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s*(\d{4})\b/i);
+        if (m) {
+            return { year: parseInt(m[2]), month: MONTHS[m[1].toLowerCase()] };
+        }
+        // Fallback: Created at
+        if (row['Created at']) {
+            const d = new Date(row['Created at']);
+            if (!isNaN(d)) return { year: d.getFullYear(), month: d.getMonth() + 1 };
+        }
+        return null;
+    }
+
+    function ymLabel(wm) {
+        if (!wm) return '';
+        return new Date(wm.year, wm.month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    // =========================================================================
+    // Series name extraction & matching
+    // =========================================================================
+    function extractInvoiceSeries(title) {
+        // Strip leading month indicator
+        let t = title.replace(/^(?:[A-Z][a-z]+\s+\d{4}|\d{2}[-\s]?\d{4})\s*[-\s]*/i, '');
+        // Strip trailing episode reference with keyword
+        t = t.replace(/\s*[-–]\s*(?:S\d+\s+)?Eps?\.?\s*.*$/i, '');
+        // Strip trailing bare range (Jooyea-style)
+        t = t.replace(/[-\s](\d+)\s*[-–]\s*\d+\s*$/, '');
+        return t.trim();
+    }
+
+    function extractAirtableSeries(se) {
+        const m = (se || '').match(/^\s*Ep\.?\s*[^-]*[-–]\s*(.+?)\s*$/);
+        if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+        return (se || '').trim();
+    }
+
+    const STOPWORDS = new Set(['the','of','a','an','and','to','in','at','for','on']);
+    function seriesTokens(s) {
+        if (!s) return new Set();
+        let norm = s.toLowerCase();
+        norm = norm.replace(/\b(?:season|s)\s*\d+\b/g, '');
+        norm = norm.replace(/[^a-z0-9\s]/g, ' ');
+        norm = norm.replace(/\s+/g, ' ').trim();
+        return new Set(norm.split(' ').filter(t => t.length > 1 && !STOPWORDS.has(t)));
+    }
+
+    function jaccardScore(a, b) {
+        if (!a.size || !b.size) return 0;
+        const intersect = new Set([...a].filter(x => b.has(x)));
+        const union = new Set([...a, ...b]);
+        return intersect.size / union.size;
+    }
+
+    // =========================================================================
+    // Airtable parsing
+    // =========================================================================
+    function airtableEpisodeNumbers(epField) {
+        if (!epField) return [];
+        // CRITICAL: strip season markers ("S2", "S3") AND asterisks first so
+        // they don't get misread as episode numbers.
+        let s = epField.replace(/\bS\d+\b/gi, '').replace(/\*/g, '');
+        const range = s.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+        if (range) {
+            const start = parseFloat(range[1]), end = parseFloat(range[2]);
+            const out = [];
+            for (let i = Math.floor(start); i <= Math.floor(end); i++) out.push(i);
+            return out;
+        }
+        const single = s.match(/(\d+(?:\.\d+)?)/);
+        if (single) return [parseFloat(single[1])];
+        return [];
+    }
+
+    function parseAirtableDate(s) {
+        if (!s) return null;
+        const trimmed = s.trim();
+        // MM/DD/YYYY
+        let m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) return new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]));
+        // YYYY-MM-DD
+        m = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+        // MM-DD-YYYY
+        m = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+        if (m) return new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]));
+        return null;
+    }
+
+    function buildAirtableLookup(atRows) {
+        const byEmail = new Map();
+        for (const r of atRows) {
+            const rawEmail = r['Translator Email'] || '';
+            // Handle comma-separated emails (Mantra uses this)
+            for (const e of rawEmail.split(',')) {
+                const email = e.trim().toLowerCase();
+                if (!email) continue;
+                if (!byEmail.has(email)) byEmail.set(email, []);
+                byEmail.get(email).push(r);
+            }
+        }
+        return byEmail;
+    }
+
+    function findAirtableMatch(ep, email, invSeriesTokens, atLookup) {
+        const rows = atLookup.get(email) || [];
+        let best = null;
+        let bestScore = 0;
+        for (const r of rows) {
+            const atEps = airtableEpisodeNumbers(r['Ep #'] || '');
+            if (!atEps.includes(ep)) continue;
+            const atSeries = extractAirtableSeries(r['Series & Episode']);
+            const atTokens = seriesTokens(atSeries);
+            const score = jaccardScore(invSeriesTokens, atTokens);
+            if (score > bestScore) {
+                bestScore = score;
+                best = r;
+            }
+        }
+        // Require a minimum series-match confidence to avoid false positives
+        return bestScore >= 0.3 ? best : null;
+    }
+
+    // =========================================================================
+    // Chronology check — walks all invoices per (freelancer × series) and
+    // flags gaps, overlaps, and out-of-order submissions.
+    // =========================================================================
+    function buildChronologyIssues(pays) {
+        // Group by (email, normalized series) — include all non-rejected statuses
+        // so we have full history to compare against pending invoices.
+        const groups = new Map();
+        for (const r of pays) {
+            if (r['Status'] === 'rejected') continue;
+            const wm = extractWorkMonth(r);
+            if (!wm) continue;
+            const eps = extractEpisodeNumbers(r['Invoice'] || '');
+            if (!eps.length) continue;
+            const email = (r['Email'] || '').trim().toLowerCase();
+            const series = extractInvoiceSeries(r['Invoice'] || '');
+            const key = email + '||' + [...seriesTokens(series)].sort().join(' ');
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push({
+                row: r, wm, eps: new Set(eps), epsList: eps,
+                series, month: wm.year * 12 + wm.month,
+            });
+        }
+
+        // Track issues keyed by the *pending* invoice they apply to
+        const issuesByInvoice = new Map();  // row_id → array of issue strings
+
+        for (const [key, list] of groups) {
+            if (list.length < 2) continue;
+            list.sort((a, b) => a.month - b.month);
+            for (let i = 1; i < list.length; i++) {
+                const prev = list[i - 1];
+                const cur = list[i];
+                const overlap = [...cur.eps].filter(e => prev.eps.has(e));
+                const prevMax = Math.max(...prev.eps);
+                const curMin = Math.min(...cur.eps);
+
+                const prevLabel = ymLabel(prev.wm);
+                const curLabel = ymLabel(cur.wm);
+                const issues = [];
+
+                if (overlap.length > 0) {
+                    const epStr = overlap.sort((a, b) => a - b).join(', ');
+                    issues.push({
+                        type: 'overlap',
+                        text: `<b>Ep ${epStr}</b> also appears in <b>${prevLabel}</b> invoice: &ldquo;${prev.row['Invoice']}&rdquo;`,
+                    });
+                } else if (curMin > prevMax + 1) {
+                    const skipped = [];
+                    for (let k = Math.floor(prevMax) + 1; k < Math.floor(curMin); k++) skipped.push(k);
+                    issues.push({
+                        type: 'gap',
+                        text: `<b>Gap:</b> ${prevLabel} ended at Ep ${Math.floor(prevMax)}, this invoice starts at Ep ${Math.floor(curMin)} — skipped: Ep ${skipped.join(', ')}`,
+                    });
+                }
+                if (curMin < prevMax && overlap.length === 0) {
+                    issues.push({
+                        type: 'outoforder',
+                        text: `<b>Out of order:</b> this invoice starts at Ep ${Math.floor(curMin)}, but ${prevLabel} already went up to Ep ${Math.floor(prevMax)}`,
+                    });
+                }
+
+                if (issues.length > 0) {
+                    const id = rowId(cur.row);
+                    if (!issuesByInvoice.has(id)) issuesByInvoice.set(id, []);
+                    issuesByInvoice.get(id).push(...issues);
+                }
+            }
+        }
+        return issuesByInvoice;
+    }
+
+    // Stable id for each payment row (needed because multiple rows might
+    // have same freelancer + title in edge cases)
+    function rowId(row) {
+        return [row['Name'], row['Invoice'], row['Created at'], row['Amount']].join('||');
+    }
+
+    // =========================================================================
+    // Airtable cross-check for one invoice
+    // =========================================================================
+    function checkInvoiceAgainstAirtable(row, atLookup) {
+        const title = row['Invoice'] || '';
+        const email = (row['Email'] || '').trim().toLowerCase();
+        const wm = extractWorkMonth(row);
+        const eps = extractEpisodeNumbers(title);
+        const invSeries = extractInvoiceSeries(title);
+        const invTokens = seriesTokens(invSeries);
+
+        if (!wm || !eps.length) {
+            return { status: 'unverified', reason: 'Could not parse work month or episode numbers', episodes: [] };
+        }
+
+        const episodes = [];
+        let anyMatch = false;
+        let anyMismatch = false;
+        let allMissing = true;
+
+        for (const ep of eps) {
+            const match = findAirtableMatch(ep, email, invTokens, atLookup);
+            if (!match) {
+                episodes.push({ ep, status: 'missing' });
+                continue;
+            }
+            anyMatch = true;
+            allMissing = false;
+            const tag = (match['TAG (Translator)'] || '').trim();
+            const useLettering = ['Freelance Translator/GD', 'Mantra'].includes(tag);
+            const dueField = useLettering ? 'Lettering Due / 식자 납품일' : 'Translation Due / 번역 납품일';
+            const due = parseAirtableDate(match[dueField]);
+            if (!due) {
+                episodes.push({ ep, status: 'no_due', tag, matchedSeries: extractAirtableSeries(match['Series & Episode']) });
+                continue;
+            }
+            const inMonth = (due.getFullYear() === wm.year && due.getMonth() + 1 === wm.month);
+            episodes.push({
+                ep,
+                status: inMonth ? 'ok' : 'wrong_month',
+                due,
+                dueType: useLettering ? 'Lettering' : 'Translation',
+                tag,
+                matchedSeries: extractAirtableSeries(match['Series & Episode']),
+            });
+            if (!inMonth) anyMismatch = true;
+        }
+
+        if (allMissing) return { status: 'unverified', reason: 'No matching Airtable rows for this series', episodes };
+        if (anyMismatch) return { status: 'attention', episodes };
+        return { status: 'clean', episodes };
+    }
+
+    // =========================================================================
+    // Team roster — built from historical approvals
+    // -------------------------------------------------------------------------
+    // "new" invoices have a blank Approver field (they haven't been approved
+    // yet), so filtering the Approver column directly would hide exactly the
+    // invoices that need review the most. Instead, we build a team roster:
+    // a freelancer is considered "on Dennis Choi's team" if Dennis has ever
+    // approved any of their past invoices. This carries over automatically
+    // to new invoices from the same freelancer.
+    // =========================================================================
+    function buildTeamRoster(pays) {
+        const byApprover = new Map(); // approver name → Set of freelancer emails
+        for (const r of pays) {
+            const approver = (r['Approver'] || '').trim();
+            const email = (r['Email'] || '').trim().toLowerCase();
+            if (!approver || !email) continue;
+            if (!byApprover.has(approver)) byApprover.set(approver, new Set());
+            byApprover.get(approver).add(email);
+        }
+        return byApprover;
+    }
+
+    // =========================================================================
+    // Rate baseline — historical per-episode rate by (freelancer × series)
+    // -------------------------------------------------------------------------
+    // For each freelancer × series pair, look at all their fully PAID past
+    // invoices and compute the episode rate (amount / episode count). The
+    // most-frequent value becomes the expected rate for that pair. Pending
+    // invoices are then compared against this baseline.
+    //
+    // Sam Kim and Hyerim Ko are intentionally skipped — they're billed by
+    // the hour or by character count, so episode rate isn't meaningful.
+    // =========================================================================
+    function buildRateBaseline(pays) {
+        const buckets = new Map(); // key → { rates: [], titles: [] }
+        for (const r of pays) {
+            const status = (r['Status'] || '').trim().toLowerCase();
+            // Only use PAID invoices as the "ground truth" baseline. Approved
+            // but unpaid invoices might themselves be wrong — we don't want
+            // to compare a new invoice against another unverified one.
+            if (status !== 'paid') continue;
+            const name = (r['Name'] || '').trim();
+            if (!name || SPECIAL_FREELANCERS[name]) continue;
+            const eps = extractEpisodeNumbers(r['Invoice'] || '');
+            if (!eps.length) continue;
+            const amt = parseFloat((r['Amount'] || '0').replace(/[$,]/g, ''));
+            if (!amt || isNaN(amt)) continue;
+            const rate = amt / eps.length;
+            const series = extractInvoiceSeries(r['Invoice'] || '');
+            const seriesK = [...seriesTokens(series)].sort().join(' ');
+            const key = name + '||' + seriesK;
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push({ rate: Math.round(rate * 100) / 100, title: r['Invoice'] });
+        }
+        // Reduce each bucket to the most-frequent rate (mode). If tied, the
+        // most recent typical value wins (we just take the first mode).
+        const baseline = new Map();
+        for (const [key, entries] of buckets) {
+            const counts = new Map();
+            for (const e of entries) counts.set(e.rate, (counts.get(e.rate) || 0) + 1);
+            let bestRate = null, bestCount = 0;
+            for (const [rate, count] of counts) {
+                if (count > bestCount) { bestRate = rate; bestCount = count; }
+            }
+            baseline.set(key, {
+                expectedRate: bestRate,
+                sampleCount: entries.length,
+                allRates: [...counts.keys()].sort((a, b) => a - b),
+            });
+        }
+        return baseline;
+    }
+
+    function checkInvoiceRate(row, baseline) {
+        const name = (row['Name'] || '').trim();
+        const special = SPECIAL_FREELANCERS[name];
+        // Sam/Hyerim: rate varies by design, no comparison meaningful
+        if (special === 'hourly' || special === 'by char') {
+            return { kind: 'special', label: special };
+        }
+        const eps = extractEpisodeNumbers(row['Invoice'] || '');
+        if (!eps.length) return { kind: 'no-eps' };
+        const amt = parseFloat((row['Amount'] || '0').replace(/[$,]/g, ''));
+        if (!amt || isNaN(amt)) return { kind: 'no-amt' };
+        const actualRate = Math.round((amt / eps.length) * 100) / 100;
+        const series = extractInvoiceSeries(row['Invoice'] || '');
+        const seriesK = [...seriesTokens(series)].sort().join(' ');
+        const key = name + '||' + seriesK;
+        const base = baseline.get(key);
+        if (!base) {
+            return { kind: 'no-baseline', actualRate, epCount: eps.length };
+        }
+        // Match if actual is within 1¢ of expected (handles float noise)
+        const diff = Math.abs(actualRate - base.expectedRate);
+        return {
+            kind: diff < 0.01 ? 'match' : 'mismatch',
+            actualRate,
+            expectedRate: base.expectedRate,
+            sampleCount: base.sampleCount,
+            allRates: base.allRates,
+            epCount: eps.length,
+        };
+    }
+
+    function fmtMoney(v) {
+        return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fmtRateShort(v) {
+        // Whole dollars: "$165". Cents: "$108.80".
+        return v === Math.floor(v)
+            ? '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 })
+            : '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // =========================================================================
+    // CSV upload handling
+    // =========================================================================
+    function setupDrop(drop, input, onFile) {
+        drop.addEventListener('click', () => input.click());
+        drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+        drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+        drop.addEventListener('drop', e => {
+            e.preventDefault(); drop.classList.remove('drag');
+            if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+        });
+        input.addEventListener('change', e => { if (e.target.files[0]) onFile(e.target.files[0]); });
+    }
+
+    setupDrop($('csvDrop'), $('csvInput'), handleCsv);
+    setupDrop($('atDrop'), $('atInput'), handleAt);
+    $('csvClear').addEventListener('click', e => { e.stopPropagation(); resetCsv(); });
+    $('atClear').addEventListener('click', e => { e.stopPropagation(); resetAt(); });
+    $('statusSelect').addEventListener('change', e => { state.activeStatus = e.target.value; render(); });
+
+    function handleCsv(file) {
+        Papa.parse(file, {
+            header: true, skipEmptyLines: true,
+            complete: (results) => {
+                state.pays = results.data;
+                $('csvEmpty').style.display = 'none';
+                $('csvLoaded').style.display = 'block';
+                $('csvDrop').classList.add('loaded');
+                $('csvName').textContent = file.name;
+                $('csvStatus').textContent = `${state.pays.length} rows`;
+                buildApproverFilter();
+                $('filters').classList.add('visible');
+                render();
+                toast('Worksuite CSV loaded', 'success');
+            },
+        });
+    }
+
+    function handleAt(file) {
+        Papa.parse(file, {
+            header: true, skipEmptyLines: true,
+            complete: (results) => {
+                state.at = results.data;
+                $('atEmpty').style.display = 'none';
+                $('atLoaded').style.display = 'block';
+                $('atDrop').classList.add('loaded');
+                $('atName').textContent = file.name;
+                $('atStatus').textContent = `${state.at.length} episode rows`;
+                render();
+                toast('Airtable CSV loaded', 'success');
+            },
+        });
+    }
+
+    function resetCsv() {
+        state.pays = [];
+        state.expanded.clear();
+        state.checked.clear();
+        $('csvInput').value = '';
+        $('csvEmpty').style.display = 'block';
+        $('csvLoaded').style.display = 'none';
+        $('csvDrop').classList.remove('loaded');
+        $('filters').classList.remove('visible');
+        $('buckets').classList.remove('visible');
+        $('results').innerHTML = '';
+    }
+    function resetAt() {
+        state.at = [];
+        $('atInput').value = '';
+        $('atEmpty').style.display = 'block';
+        $('atLoaded').style.display = 'none';
+        $('atDrop').classList.remove('loaded');
+        render();
+    }
+
+    function buildApproverFilter() {
+        // Build team rosters (approver → set of freelancer emails) so the
+        // chip count reflects how many freelancers each approver manages,
+        // not raw invoice count.
+        const rosters = buildTeamRoster(state.pays);
+        state.approverCounts = {};
+        for (const [approver, emails] of rosters) {
+            state.approverCounts[approver] = emails.size;
+        }
+        const approvers = Object.keys(state.approverCounts)
+            .sort((a, b) => state.approverCounts[b] - state.approverCounts[a]);
+        state.activeApprovers = new Set(
+            DEFAULT_APPROVERS.filter(a => a in state.approverCounts)
+        );
+        const group = $('approverChips');
+        group.innerHTML = '';
+        for (const a of approvers) {
+            const chip = document.createElement('button');
+            chip.className = 'chip' + (state.activeApprovers.has(a) ? ' active' : '');
+            chip.innerHTML = `${escapeHtml(a)}<span class="count">${state.approverCounts[a]}</span>`;
+            chip.title = `${state.approverCounts[a]} freelancer${state.approverCounts[a] !== 1 ? 's' : ''} historically approved by ${a}`;
+            chip.addEventListener('click', () => {
+                if (state.activeApprovers.has(a)) state.activeApprovers.delete(a);
+                else state.activeApprovers.add(a);
+                chip.classList.toggle('active');
+                render();
+            });
+            group.appendChild(chip);
+        }
+    }
+
+    // =========================================================================
+    // Render
+    // =========================================================================
+    function render() {
+        if (!state.pays.length) return;
+
+        // 1. Chronology issues across ALL non-rejected invoices
+        const chronoIssues = buildChronologyIssues(state.pays);
+
+        // 1b. Rate baseline from historical paid invoices
+        const rateBaseline = buildRateBaseline(state.pays);
+
+        // 2. Airtable lookup (if loaded)
+        const atLookup = state.at.length ? buildAirtableLookup(state.at) : null;
+
+        // 3. Filter to pending invoices from freelancers on the selected teams.
+        //    Team roster is derived from historical approvals, so "new"
+        //    invoices (which have a blank Approver field) still get picked up
+        //    as long as the freelancer has been approved by the selected
+        //    approver at least once in the past.
+        const teamRoster = buildTeamRoster(state.pays);
+        const teamEmails = new Set();
+        for (const approver of state.activeApprovers) {
+            const emails = teamRoster.get(approver) || new Set();
+            for (const e of emails) teamEmails.add(e);
+        }
+
+        let pendingStatuses;
+        if (state.activeStatus === 'new') {
+            pendingStatuses = new Set(['new', 'submitted']);
+        } else if (state.activeStatus === 'new_approved') {
+            pendingStatuses = new Set(['new', 'submitted', 'approved']);
+        } else {
+            // 'all_pre_paid'
+            pendingStatuses = new Set(['new', 'submitted', 'approved', 'scheduled', 'in_flight']);
+        }
+
+        const pending = state.pays.filter(r => {
+            if (!pendingStatuses.has((r['Status'] || '').trim().toLowerCase())) return false;
+            if (state.activeApprovers.size > 0) {
+                const email = (r['Email'] || '').trim().toLowerCase();
+                if (!teamEmails.has(email)) return false;
+            }
+            return true;
+        });
+
+        if (pending.length === 0) {
+            $('buckets').classList.remove('visible');
+            $('results').innerHTML = '';
+            const emptyEl = $('emptyState');
+            emptyEl.style.display = 'block';
+            // Context-aware message
+            const statusLabel = state.activeStatus === 'new' ? 'new (pending first review)'
+                : state.activeStatus === 'new_approved' ? 'new or approved'
+                : 'pre-paid';
+            const approverLabel = state.activeApprovers.size > 0
+                ? [...state.activeApprovers].join(' + ')
+                : '(any approver)';
+            emptyEl.innerHTML = `<p>No <b>${statusLabel}</b> invoices for <b>${escapeHtml(approverLabel)}</b>.</p><p style="font-size:12px;margin-top:8px;">Try widening the status filter above, or check back after freelancers submit new invoices.</p>`;
+            return;
+        }
+        $('emptyState').style.display = 'none';
+        $('buckets').classList.add('visible');
+
+        // 4. Evaluate each invoice + assign to bucket
+        const evaluated = pending.map(row => {
+            const id = rowId(row);
+            const chrono = chronoIssues.get(id) || [];
+            const airtable = atLookup ? checkInvoiceAgainstAirtable(row, atLookup) : null;
+            const rateInfo = checkInvoiceRate(row, rateBaseline);
+            let bucket = 'clean';
+            if (chrono.length > 0) bucket = 'attention';
+            if (rateInfo.kind === 'mismatch') bucket = 'attention';
+            if (airtable) {
+                if (airtable.status === 'attention') bucket = 'attention';
+                else if (airtable.status === 'unverified' && bucket !== 'attention') bucket = 'unverified';
+            } else {
+                if (bucket !== 'attention') bucket = 'unverified';
+            }
+            return { row, id, chrono, airtable, bucket };
+        });
+
+        // 5. Update bucket counts
+        const counts = { clean: 0, attention: 0, unverified: 0 };
+        for (const e of evaluated) counts[e.bucket]++;
+        $('bClean').textContent = counts.clean;
+        $('bAttention').textContent = counts.attention;
+        $('bUnverified').textContent = counts.unverified;
+        $('bUnverifiedSub').textContent = atLookup
+            ? 'series not found in Airtable'
+            : 'no Airtable data loaded';
+
+        // 6. Group by freelancer, sorted alphabetically (A→Z)
+        const byPerson = new Map();
+        for (const e of evaluated) {
+            const name = (e.row['Name'] || '—').trim();
+            if (!byPerson.has(name)) byPerson.set(name, []);
+            byPerson.get(name).push(e);
+        }
+        const ordered = [...byPerson.entries()].sort((a, b) =>
+            a[0].localeCompare(b[0], undefined, { sensitivity: 'base' })
+        );
+
+        // 7. Render
+        const out = [];
+        for (const [name, list] of ordered) {
+            list.sort((a, b) => ['attention','unverified','clean'].indexOf(a.bucket) - ['attention','unverified','clean'].indexOf(b.bucket));
+            const totalAmount = list.reduce((s, e) => s + (parseFloat((e.row['Amount'] || '0').replace(/[$,]/g,'')) || 0), 0);
+            const special = SPECIAL_FREELANCERS[name];
+            const uncheckedCount = list.filter(e => !state.checked.has(e.id)).length;
+            out.push(`
+                <div class="group">
+                    <div class="group-header">
+                        <h3>${escapeHtml(name)}${special ? `<span class="special-tag">${special}</span>` : ''}</h3>
+                        <div class="meta">${list.length} invoice${list.length !== 1 ? 's' : ''} · $${totalAmount.toLocaleString('en-US', {maximumFractionDigits: 0})} · ${uncheckedCount} unchecked</div>
+                    </div>
+                    ${list.map(e => renderInvoice(e, rateBaseline)).join('')}
+                </div>
+            `);
+        }
+        $('results').innerHTML = out.join('');
+
+        // 8. Wire up checkboxes and detail toggles
+        document.querySelectorAll('[data-check-id]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const id = cb.dataset.checkId;
+                if (cb.checked) state.checked.add(id);
+                else state.checked.delete(id);
+                cb.closest('.invoice').classList.toggle('checked', cb.checked);
+                // Update unchecked count in header (re-render is overkill; just update it)
+                const groupEl = cb.closest('.group');
+                const uncheckedInGroup = groupEl.querySelectorAll('.invoice:not(.checked)').length;
+                const totalInGroup = groupEl.querySelectorAll('.invoice').length;
+                const meta = groupEl.querySelector('.meta');
+                meta.textContent = meta.textContent.replace(/\d+ unchecked/, `${uncheckedInGroup} unchecked`);
+            });
+        });
+        document.querySelectorAll('[data-toggle-id]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.toggleId;
+                if (state.expanded.has(id)) state.expanded.delete(id);
+                else state.expanded.add(id);
+                const detail = btn.nextElementSibling;
+                detail.classList.toggle('open');
+                btn.textContent = detail.classList.contains('open') ? '▲ hide details' : '▼ show details';
+            });
+        });
+    }
+
+    function renderInvoice(e, rateBaseline) {
+        const { row, id, chrono, airtable, bucket } = e;
+        const title = row['Invoice'] || '';
+        const amt = parseFloat((row['Amount'] || '0').replace(/[$,]/g, '')) || 0;
+        const wm = extractWorkMonth(row);
+        const status = row['Status'] || '';
+        const isChecked = state.checked.has(id);
+        const isExpanded = state.expanded.has(id);
+
+        // --- Rate check -----------------------------------------------------
+        const rateInfo = checkInvoiceRate(row, rateBaseline);
+        let rateBadge = '';
+        if (rateInfo.kind === 'match') {
+            rateBadge = `<div class="invoice-rate match" title="${rateInfo.epCount} ep × ${fmtMoney(rateInfo.actualRate)} = ${fmtMoney(amt)} · matches ${rateInfo.sampleCount} prior invoice${rateInfo.sampleCount !== 1 ? 's' : ''}"><span class="icon">✓</span>${rateInfo.epCount} × ${fmtRateShort(rateInfo.actualRate)} (matches history)</div>`;
+        } else if (rateInfo.kind === 'mismatch') {
+            const others = rateInfo.allRates.length > 1 ? ` (also seen: ${rateInfo.allRates.map(fmtRateShort).join(', ')})` : '';
+            rateBadge = `<div class="invoice-rate mismatch" title="Expected ${fmtMoney(rateInfo.expectedRate)} based on ${rateInfo.sampleCount} prior invoice${rateInfo.sampleCount !== 1 ? 's' : ''}${others}"><span class="icon">≠</span>${rateInfo.epCount} × ${fmtRateShort(rateInfo.actualRate)} (expected ${fmtRateShort(rateInfo.expectedRate)})</div>`;
+        } else if (rateInfo.kind === 'no-baseline') {
+            rateBadge = `<div class="invoice-rate no-baseline" title="No prior paid invoices for this freelancer × series"><span class="icon">·</span>${rateInfo.epCount} × ${fmtRateShort(rateInfo.actualRate)} (first invoice for this series)</div>`;
+        } else if (rateInfo.kind === 'special') {
+            rateBadge = `<div class="invoice-rate special" title="Billed by ${rateInfo.label} — episode rate not directly comparable">${rateInfo.label} rate</div>`;
+        }
+
+        // --- Build flag list ------------------------------------------------
+        const flags = [];
+        for (const c of chrono) {
+            flags.push(`<div class="flag attention"><span class="flag-icon">⚠</span><span class="flag-text">${c.text}</span></div>`);
+        }
+        if (rateInfo.kind === 'mismatch') {
+            flags.push(`<div class="flag attention"><span class="flag-icon">⚠</span><span class="flag-text"><b>Rate differs from history:</b> charged ${fmtMoney(rateInfo.actualRate)}/ep, but ${rateInfo.sampleCount} prior invoice${rateInfo.sampleCount !== 1 ? 's' : ''} for this series used ${fmtMoney(rateInfo.expectedRate)}/ep</span></div>`);
+        }
+        if (airtable) {
+            if (airtable.status === 'attention') {
+                const mismatches = airtable.episodes.filter(ep => ep.status === 'wrong_month');
+                for (const ep of mismatches) {
+                    const dueStr = ep.due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    flags.push(`<div class="flag attention"><span class="flag-icon">⚠</span><span class="flag-text"><b>Ep ${ep.ep}:</b> ${ep.dueType} due ${dueStr} — does not fall in ${ymLabel(wm)}</span></div>`);
+                }
+            } else if (airtable.status === 'unverified') {
+                flags.push(`<div class="flag info"><span class="flag-icon">?</span><span class="flag-text">${escapeHtml(airtable.reason)}</span></div>`);
+            } else if (airtable.status === 'clean' && chrono.length === 0 && rateInfo.kind !== 'mismatch') {
+                flags.push(`<div class="flag ok"><span class="flag-icon">✓</span><span class="flag-text">All ${airtable.episodes.length} episode${airtable.episodes.length !== 1 ? 's' : ''} verified — due dates match work month</span></div>`);
+            }
+        } else if (chrono.length === 0 && rateInfo.kind !== 'mismatch') {
+            flags.push(`<div class="flag info"><span class="flag-icon">?</span><span class="flag-text">Upload Airtable CSV to verify due dates</span></div>`);
+        }
+
+        // Detail: per-episode breakdown if Airtable loaded
+        let detailHtml = '';
+        if (airtable && airtable.episodes.length) {
+            const epRows = airtable.episodes.map(ep => {
+                if (ep.status === 'missing') {
+                    return `<tr><td class="num">${ep.ep}</td><td class="ep-miss" colspan="3">Not found in Airtable for this series</td></tr>`;
+                }
+                if (ep.status === 'no_due') {
+                    return `<tr><td class="num">${ep.ep}</td><td>${escapeHtml(ep.matchedSeries)}</td><td>—</td><td class="ep-miss">No due date (tag: ${escapeHtml(ep.tag)})</td></tr>`;
+                }
+                const cls = ep.status === 'ok' ? 'ep-ok' : 'ep-warn';
+                const dueStr = ep.due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const label = ep.status === 'ok' ? 'matches work month' : `in ${ep.due.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} — NOT ${ymLabel(wm)}`;
+                return `<tr><td class="num">${ep.ep}</td><td>${escapeHtml(ep.matchedSeries)}</td><td class="num">${ep.dueType}: ${dueStr}</td><td class="${cls}">${label}</td></tr>`;
+            }).join('');
+            detailHtml = `
+                <table class="ep-table">
+                    <thead><tr><th>Ep</th><th>Matched series</th><th>Due date</th><th>Status</th></tr></thead>
+                    <tbody>${epRows}</tbody>
+                </table>
+            `;
+        }
+
+        return `
+            <div class="invoice${isChecked ? ' checked' : ''}">
+                <div class="invoice-top">
+                    <input type="checkbox" data-check-id="${escapeAttr(id)}" ${isChecked ? 'checked' : ''}>
+                    <div class="invoice-main">
+                        <div class="invoice-title">${escapeHtml(title)}</div>
+                        <div class="invoice-meta">${status.toUpperCase()} · ${escapeHtml(ymLabel(wm))}</div>
+                    </div>
+                    <div>
+                        <div class="invoice-amt">${fmtMoney(amt)}</div>
+                        ${rateBadge}
+                    </div>
+                </div>
+                ${flags.length ? `<div class="flags">${flags.join('')}</div>` : ''}
+                ${detailHtml ? `<button class="detail-toggle" data-toggle-id="${escapeAttr(id)}">${isExpanded ? '▲ hide details' : '▼ show details'}</button><div class="detail${isExpanded ? ' open' : ''}">${detailHtml}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+</script>
+</body>
+</html>
