@@ -188,6 +188,11 @@
         border-color: var(--accent);
     }
     .chip .count { opacity: 0.7; margin-left: 4px; font-size: 11px; }
+    /* New-freelancer (no approver) chip — visually distinct from team chips */
+    .chip.chip-unassigned { border-style: dashed; border-color: var(--info); color: var(--info); }
+    .chip.chip-unassigned:hover { background: var(--info-soft); }
+    .chip.chip-unassigned.active { background: var(--info); border-color: var(--info); color: #fff; }
+    .chip.chip-unassigned.active:hover { background: var(--info); }
     select {
         width: 100%;
         font-family: inherit;
@@ -560,7 +565,7 @@
     </div>
 
     <footer>
-        Runs entirely in your browser — nothing is uploaded. "Your team" is derived from historical approvals: a freelancer is on Dennis Choi's team if Dennis has ever approved one of their past invoices. This works because "new" invoices haven't been approved yet and have no approver assigned. The chronology check walks through every invoice for each freelancer × series combination (across the full history in the CSV) and flags gaps, overlaps, and out-of-order submissions. The rate check compares each pending invoice's per-episode rate against the most-frequent rate across that freelancer's prior PAID invoices for the same series; Sam Kim and Hyerim Ko are excluded because they bill by hour and character count. The Airtable check matches each invoice episode by translator email + series name + episode number, then compares the relevant due date (Translation for "Freelance Translator" tag, Lettering for "Freelance Translator/GD" and "Mantra" tags) against the invoice's work month.
+        Runs entirely in your browser — nothing is uploaded. "Your team" is derived from historical approvals: a freelancer is on Dennis Choi's team if Dennis has ever approved one of their past invoices. This works because "new" invoices haven't been approved yet and have no approver assigned. The <b>New freelancers · no approver</b> chip captures freelancers who have <em>never</em> had an invoice approved by anyone — brand-new freelancers who wouldn't otherwise show up under any approver; toggle it on to review their first invoices. Each freelancer's header shows their <b>series</b> count (distinct projects), <b>episode</b> count (episodes parsed from invoice titles), and <b>total amount invoiced</b> across the invoices currently shown. When a title can't be parsed into episode numbers, the episode count reads &ldquo;need count&rdquo; (or &ldquo;N+ … some need count&rdquo; when only part parsed) rather than an inaccurate 0. The chronology check walks through every invoice for each freelancer × series combination (across the full history in the CSV) and flags gaps, overlaps, and out-of-order submissions. The rate check compares each pending invoice's per-episode rate against the most-frequent rate across that freelancer's prior PAID invoices for the same series; Sam Kim and Hyerim Ko are excluded because they bill by hour and character count. The Airtable check matches each invoice episode by translator email + series name + episode number, then compares the relevant due date (Translation for "Freelance Translator" tag, Lettering for "Freelance Translator/GD" and "Mantra" tags) against the invoice's work month.
     </footer>
 </div>
 
@@ -580,6 +585,11 @@
         checked: new Set(),
     };
     const DEFAULT_APPROVERS = ['Dennis Choi', 'Min Ju Huh'];
+    // Sentinel roster key for freelancers who have never had any invoice
+    // approved by anyone — i.e. brand-new freelancers whose invoices carry no
+    // approver. Treated as a pseudo-approver so it flows through the same
+    // chip / teamEmails machinery as real approvers.
+    const NO_APPROVER = '__no_approver__';
     const SPECIAL_FREELANCERS = {
         'Sam Kim': 'hourly',
         'Hyerim Ko': 'by char',
@@ -938,13 +948,24 @@
     // =========================================================================
     function buildTeamRoster(pays) {
         const byApprover = new Map(); // approver name → Set of freelancer emails
+        const allEmails = new Set();
+        const approvedEmails = new Set();
         for (const r of pays) {
             const approver = (r['Approver'] || '').trim();
             const email = (r['Email'] || '').trim().toLowerCase();
-            if (!approver || !email) continue;
+            if (!email) continue;
+            allEmails.add(email);
+            if (!approver) continue;
+            approvedEmails.add(email);
             if (!byApprover.has(approver)) byApprover.set(approver, new Set());
             byApprover.get(approver).add(email);
         }
+        // Freelancers who have NEVER had an invoice approved by anyone. Their
+        // invoices are "new" (blank Approver), so they don't belong to any
+        // approver's roster and would otherwise be invisible. Expose them under
+        // a sentinel key so they can be reviewed via a dedicated filter chip.
+        const noApprover = new Set([...allEmails].filter(e => !approvedEmails.has(e)));
+        if (noApprover.size) byApprover.set(NO_APPROVER, noApprover);
         return byApprover;
     }
 
@@ -1124,18 +1145,31 @@
         for (const [approver, emails] of rosters) {
             state.approverCounts[approver] = emails.size;
         }
+        // Real approvers sorted by roster size (desc); the no-approver sentinel
+        // is always rendered last as a visually distinct chip.
         const approvers = Object.keys(state.approverCounts)
+            .filter(a => a !== NO_APPROVER)
             .sort((a, b) => state.approverCounts[b] - state.approverCounts[a]);
+        const chipKeys = [...approvers];
+        if (NO_APPROVER in state.approverCounts) chipKeys.push(NO_APPROVER);
+
         state.activeApprovers = new Set(
             DEFAULT_APPROVERS.filter(a => a in state.approverCounts)
         );
         const group = $('approverChips');
         group.innerHTML = '';
-        for (const a of approvers) {
+        for (const a of chipKeys) {
+            const isUnassigned = a === NO_APPROVER;
+            const cnt = state.approverCounts[a];
             const chip = document.createElement('button');
-            chip.className = 'chip' + (state.activeApprovers.has(a) ? ' active' : '');
-            chip.innerHTML = `${escapeHtml(a)}<span class="count">${state.approverCounts[a]}</span>`;
-            chip.title = `${state.approverCounts[a]} freelancer${state.approverCounts[a] !== 1 ? 's' : ''} historically approved by ${a}`;
+            chip.className = 'chip'
+                + (isUnassigned ? ' chip-unassigned' : '')
+                + (state.activeApprovers.has(a) ? ' active' : '');
+            const label = isUnassigned ? 'New freelancers · no approver' : escapeHtml(a);
+            chip.innerHTML = `${label}<span class="count">${cnt}</span>`;
+            chip.title = isUnassigned
+                ? `${cnt} freelancer${cnt !== 1 ? 's' : ''} with no approver yet — their invoices have never been approved by anyone, so they're brand new. Toggle on to review them.`
+                : `${cnt} freelancer${cnt !== 1 ? 's' : ''} historically approved by ${a}`;
             chip.addEventListener('click', () => {
                 if (state.activeApprovers.has(a)) state.activeApprovers.delete(a);
                 else state.activeApprovers.add(a);
@@ -1254,13 +1288,36 @@
         for (const [name, list] of ordered) {
             list.sort((a, b) => ['attention','unverified','clean'].indexOf(a.bucket) - ['attention','unverified','clean'].indexOf(b.bucket));
             const totalAmount = list.reduce((s, e) => s + (parseFloat((e.row['Amount'] || '0').replace(/[$,]/g,'')) || 0), 0);
+            // Series count = distinct projects; episode count = total episodes
+            // parsed from invoice titles. Both scoped to the invoices currently
+            // shown for this freelancer (i.e. respecting the status/team filter).
+            const seriesSet = new Set();
+            let episodeCount = 0;
+            let needCount = 0; // invoices whose episode count couldn't be parsed
+            for (const e of list) {
+                const proj = (e.row['Project'] || '').trim() || extractInvoiceSeries(e.row['Invoice'] || '');
+                if (proj) seriesSet.add(proj.toLowerCase());
+                const eps = extractEpisodeNumbers(e.row['Invoice'] || '').length;
+                if (eps === 0) needCount++;
+                else episodeCount += eps;
+            }
+            const seriesCount = seriesSet.size;
+            // Never show a bare "0" episodes — if nothing parsed it needs a
+            // manual count; if only some invoices parsed, mark the total a floor.
+            let episodesLabel;
+            if (episodeCount === 0) {
+                episodesLabel = 'episodes: need count';
+            } else if (needCount > 0) {
+                episodesLabel = `${episodeCount}+ episodes (some need count)`;
+            } else {
+                episodesLabel = `${episodeCount} episode${episodeCount !== 1 ? 's' : ''}`;
+            }
             const special = SPECIAL_FREELANCERS[name];
-            const uncheckedCount = list.filter(e => !state.checked.has(e.id)).length;
             out.push(`
                 <div class="group">
                     <div class="group-header">
                         <h3>${escapeHtml(name)}${special ? `<span class="special-tag">${special}</span>` : ''}</h3>
-                        <div class="meta">${list.length} invoice${list.length !== 1 ? 's' : ''} · $${totalAmount.toLocaleString('en-US', {maximumFractionDigits: 0})} · ${uncheckedCount} unchecked</div>
+                        <div class="meta">${seriesCount} series · ${episodesLabel} · $${totalAmount.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                     </div>
                     ${list.map(e => renderInvoice(e, rateBaseline)).join('')}
                 </div>
@@ -1275,12 +1332,6 @@
                 if (cb.checked) state.checked.add(id);
                 else state.checked.delete(id);
                 cb.closest('.invoice').classList.toggle('checked', cb.checked);
-                // Update unchecked count in header (re-render is overkill; just update it)
-                const groupEl = cb.closest('.group');
-                const uncheckedInGroup = groupEl.querySelectorAll('.invoice:not(.checked)').length;
-                const totalInGroup = groupEl.querySelectorAll('.invoice').length;
-                const meta = groupEl.querySelector('.meta');
-                meta.textContent = meta.textContent.replace(/\d+ unchecked/, `${uncheckedInGroup} unchecked`);
             });
         });
         document.querySelectorAll('[data-toggle-id]').forEach(btn => {
